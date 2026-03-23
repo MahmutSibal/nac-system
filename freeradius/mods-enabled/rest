@@ -1,0 +1,39 @@
+# FreeRADIUS REST Module
+# Tüm AAA mantığı FastAPI policy engine'de — FreeRADIUS HTTP ile çağırır
+
+rest {
+    connect_uri    = "http://api:8000"
+    connect_timeout = 3.0
+
+    # authorize: kullanıcının grubunu bul, VLAN döndür, Auth-Type set et
+    authorize {
+        uri    = "${..connect_uri}/authorize"
+        method = "post"
+        body   = "json"
+    }
+
+    # authenticate: şifreyi doğrula (HTTP 200 = kabul, HTTP 401 = red)
+    authenticate {
+        uri    = "${..connect_uri}/auth"
+        method = "post"
+        body   = "json"
+    }
+
+    # accounting: oturum verisi kaydet
+    accounting {
+        uri    = "${..connect_uri}/accounting"
+        method = "post"
+        body   = "json"
+    }
+
+    pool {
+        start        = 5
+        min          = 4
+        max          = 10
+        spare        = 3
+        uses         = 0
+        retry_delay  = 30
+        lifetime     = 0
+        idle_timeout = 60
+    }
+}

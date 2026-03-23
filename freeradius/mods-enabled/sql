@@ -1,0 +1,47 @@
+# FreeRADIUS SQL Module — PostgreSQL bağlantısı
+# Bu dosya /etc/freeradius/3.0/mods-enabled/sql olarak mount edilir
+
+sql {
+    # PostgreSQL sürücüsü
+    driver  = "rlm_sql_postgresql"
+    dialect = "postgresql"
+
+    # Bağlantı bilgileri — docker-compose'dan env var olarak gelir
+    server    = "postgres"
+    port      = 5432
+    login     = "$ENV{DB_USER}"
+    password  = "$ENV{DB_PASS}"
+    radius_db = "$ENV{DB_NAME}"
+
+    # SQL sorgularında kullanılacak username değişkeni
+    # Boş bırakılırsa queries.conf'taki WHERE koşulu boş string eşleştirir
+    sql_user_name = "%{User-Name}"
+
+    # Tablo adları — init.sql ile eşleşmeli
+    acct_table1     = "radacct"
+    acct_table2     = "radacct"
+    postauth_table  = "radpostauth"
+    authcheck_table = "radcheck"
+    authreply_table = "radreply"
+    groupcheck_table = "radgroupcheck"
+    groupreply_table = "radgroupreply"
+    usergroup_table  = "radusergroup"
+
+    # Kullanıcının grup atribütlerini de yükle
+    read_groups = yes
+
+    # clients tablosunu DB'den okuma (clients.conf kullanıyoruz)
+    read_clients = no
+
+    # Bağlantı havuzu
+    pool {
+        start       = 5
+        min         = 4
+        max         = 10
+        spare       = 3
+        uses        = 0
+        retry_delay = 30
+        lifetime    = 0
+        idle_timeout = 60
+    }
+}

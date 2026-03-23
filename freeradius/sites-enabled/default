@@ -1,0 +1,67 @@
+# FreeRADIUS Virtual Server — default
+# Akış:
+#   authorize  → rest (/authorize): şifre hash + VLAN al, pap Auth-Type'ı set eder
+#   authenticate → pap: hash ile şifreyi doğrula
+#   accounting → rest (/accounting): oturum kaydet
+
+server default {
+
+    listen {
+        type   = auth
+        ipaddr = *
+        port   = 0
+    }
+
+    listen {
+        type   = acct
+        ipaddr = *
+        port   = 0
+    }
+
+    # =====================================================
+    # AUTHORIZE
+    # rest → FastAPI /authorize:
+    #   - control:MD5-Password = "<hash>" döner → pap bu hash'i kullanır
+    #   - reply:Tunnel-* döner → VLAN atribütleri
+    # pap → control'daki şifre hash'ini görünce Auth-Type = PAP set eder
+    # =====================================================
+    authorize {
+        filter_username
+        preprocess
+        rest
+        pap
+    }
+
+    # =====================================================
+    # AUTHENTICATE
+    # PAP: gelen plaintext şifresini hash'ler, control:MD5-Password ile karşılaştırır
+    # =====================================================
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+    }
+
+    # =====================================================
+    # PREACCT
+    # =====================================================
+    preacct {
+        preprocess
+    }
+
+    # =====================================================
+    # ACCOUNTING → FastAPI /accounting → PostgreSQL + Redis
+    # =====================================================
+    accounting {
+        rest
+    }
+
+    # =====================================================
+    # POST-AUTH
+    # =====================================================
+    post-auth {
+        Post-Auth-Type REJECT {
+            noop
+        }
+    }
+}
