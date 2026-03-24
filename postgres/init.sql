@@ -126,9 +126,9 @@ INSERT INTO radusergroup (username, groupname, priority) VALUES
 ON CONFLICT DO NOTHING;
 
 -- MAB testi için bilinen MAC adresleri (örnek)
--- Yazıcı MAC → employee VLAN
+-- Yazıcı MAC → employee VLAN (hash saklama kuralı için MD5-Password)
 INSERT INTO radcheck (username, attribute, op, value) VALUES
-    ('aa:bb:cc:dd:ee:ff', 'Cleartext-Password', ':=', 'aa:bb:cc:dd:ee:ff')
+    ('aa:bb:cc:dd:ee:ff', 'MD5-Password', ':=', md5('aa:bb:cc:dd:ee:ff'))
 ON CONFLICT DO NOTHING;
 
 INSERT INTO radusergroup (username, groupname, priority) VALUES

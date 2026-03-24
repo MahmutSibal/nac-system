@@ -24,7 +24,9 @@ import redis.asyncio as aioredis
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import HTMLResponse
 
-logging.basicConfig(level=logging.DEBUG)
+# Varsayılanı INFO tutup gerekirse LOG_LEVEL ile yükselt.
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NAC Policy Engine", version="1.0.0")
@@ -112,6 +114,11 @@ def is_mac(value: str) -> bool:
     return bool(re.match(r"^([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}$", value))
 
 
+def normalize_mac(value: str) -> str:
+    """MAC adresini ayraçsız lowercase forma çevir."""
+    return re.sub(r"[^0-9a-fA-F]", "", value).lower()
+
+
 async def rate_limit_increment(key: str):
     """Başarısız deneme sayacını artır."""
     await redis_cli.incr(key)
@@ -152,6 +159,7 @@ async def health():
 async def auth(body: dict):
     username = extract(body, "User-Name") or body.get("username")
     password = extract(body, "User-Password") or body.get("password")
+  calling_station_id = extract(body, "Calling-Station-Id", "")
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="username ve password zorunlu")
@@ -177,6 +185,19 @@ async def auth(body: dict):
         )
 
     if not row:
+        # Bilinmeyen MAC için kontrollü guest fallback:
+        # User-Name == User-Password ve varsa Calling-Station-Id ile tutarlı olmalı.
+        if is_mac(username) and is_mac(password):
+            same_user_pass = normalize_mac(username) == normalize_mac(password)
+            same_calling = True
+            if calling_station_id:
+                same_calling = is_mac(calling_station_id) and (
+                    normalize_mac(calling_station_id) == normalize_mac(username)
+                )
+            if same_user_pass and same_calling:
+                await redis_cli.delete(rl_key)
+                return {"code": 2, "message": "Access-Accept (MAB guest fallback)"}
+
         await rate_limit_increment(rl_key)
         raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı")
 
@@ -196,7 +217,7 @@ async def auth(body: dict):
 
 @app.post("/authorize")
 async def authorize(body: dict):
-    logger.debug("AUTHORIZE IN: %s", json.dumps(body, default=str))
+    logger.debug("AUTHORIZE IN: keys=%s", sorted(body.keys()))
     username = extract(body, "User-Name") or body.get("username")
     if not username:
         return {}
@@ -219,34 +240,14 @@ async def authorize(body: dict):
     else:
         vlan = VLAN_MAP.get(row["groupname"], VLAN_MAP["guest"])
 
-    # Şifre hash'ini al — FreeRADIUS PAP modülü bunu control listesiyle doğrular
-    async with db_pool.acquire() as conn:
-        pwd_row = await conn.fetchrow(
-            """
-            SELECT attribute, value FROM radcheck
-            WHERE username = $1
-              AND attribute IN ('Cleartext-Password', 'MD5-Password', 'Crypt-Password')
-            """,
-            username,
-        )
-
     # ---- FreeRADIUS rlm_rest RESPONSE formatı ----
     # Önemli: nested dict/list değil, düz "list:Attr": "değer" formatı
-    # "control:Attr" → FreeRADIUS iç listesi (şifre kontrolü için)
     # "reply:Attr"   → Access-Accept paketine eklenir (VLAN)
     response = {
         "reply:Tunnel-Type":             "13",  # 13 = VLAN
         "reply:Tunnel-Medium-Type":      "6",   # 6 = IEEE-802
         "reply:Tunnel-Private-Group-Id": vlan,
     }
-
-    if pwd_row:
-        # Bilinen kullanıcı: DB'deki hash ile PAP doğrulaması
-        response[f"control:{pwd_row['attribute']}"] = pwd_row["value"]
-    elif mab_request:
-        # Bilinmeyen MAC: MAB convention'ı gereği User-Password = MAC adresi
-        # Cleartext-Password olarak MAC'i set et → PAP doğrulayabilir
-        response["control:Cleartext-Password"] = username
 
     logger.debug("AUTHORIZE OUT: %s", json.dumps(response, default=str))
     return response

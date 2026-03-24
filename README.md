@@ -26,7 +26,10 @@ radtest / radclient (test)
 PostgreSQL  Redis
 ```
 
-**Akış:** Her RADIUS isteği → FreeRADIUS → FastAPI `/authorize` → PAP doğrulama → Access-Accept + VLAN atribütleri
+**Akış:**
+- Authorize: FreeRADIUS → FastAPI `/authorize` → VLAN/policy atribütleri
+- Authenticate: FreeRADIUS → FastAPI `/auth` → parola/MAB doğrulama + Redis rate-limit
+- Accounting: FreeRADIUS → FastAPI `/accounting` → PostgreSQL + Redis oturum yönetimi
 
 ## Kurulum
 
@@ -144,10 +147,15 @@ done
 
 ## Güvenlik Notları
 
-- Şifreler veritabanında MD5 hash olarak saklanır (API bcrypt destekler)
+- Şifreler veritabanında hash olarak saklanır (MD5-Password ve opsiyonel Crypt-Password/bcrypt)
 - `.env` dosyası git'e commit edilmez
 - Üretim ortamında `clients.conf` sadece yetkili NAS IP'lerine izin vermeli
 - Redis ve PostgreSQL portları dışarıya açılmamıştır
+
+## Teslim Materyalleri
+
+- Teknik rapor: `TECHNICAL_REPORT.md`
+- Video çekim planı: `VIDEO_DEMO_PLAN.md`
 
 ## Proje Yapısı
 
